@@ -1,4 +1,4 @@
-name: Update Organization Contributors in README
+name: Update Organization Contributors with Commit Counts
 
 on:
   schedule:
@@ -17,7 +17,7 @@ jobs:
       - name: Install GitHub CLI
         run: |
           sudo apt update
-          sudo apt install -y gh
+          sudo apt install -y gh jq
 
       - name: Fetch all repositories in the organization
         run: |
@@ -26,24 +26,41 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Fetch contributors for all repositories
+      - name: Fetch contributors and commit counts
         run: |
+          declare -A contributor_commits
+
           echo "# Organization Contributors" > CONTRIBUTORS.md
-          echo "This is an auto-generated list of contributors from all repositories." >> CONTRIBUTORS.md
+          echo "This list is auto-generated from all repositories with commit counts." >> CONTRIBUTORS.md
           echo "" >> CONTRIBUTORS.md
 
           while IFS= read -r repo; do
             echo "Processing repository: $repo"
-            gh api repos/SigmoidAI/$repo/contributors --paginate --jq '.[].login' | sort -u > tmp_contributors.txt
+            gh api repos/SigmoidAI/$repo/contributors --paginate --jq '.[] | {login: .login, commits: .contributions}' > tmp_contributors.json
 
-            if [ -s tmp_contributors.txt ]; then
+            if [ -s tmp_contributors.json ]; then
               echo "### $repo" >> CONTRIBUTORS.md
-              while IFS= read -r contributor; do
-                echo "- @$contributor" >> CONTRIBUTORS.md
-              done < tmp_contributors.txt
+              jq -r '.login + " (" + (.commits | tostring) + " commits)"' tmp_contributors.json | tee -a CONTRIBUTORS.md
+
+              # Aggregate commits per user
+              while IFS= read -r line; do
+                contributor=$(echo "$line" | awk '{print $1}')
+                commits=$(echo "$line" | awk '{print $2}' | tr -d '()')
+
+                if [[ -n "$contributor" && -n "$commits" ]]; then
+                  contributor_commits[$contributor]=$(( ${contributor_commits[$contributor]:-0} + commits ))
+                fi
+              done < <(jq -r '.login + " " + (.commits | tostring)' tmp_contributors.json)
+
               echo "" >> CONTRIBUTORS.md
             fi
           done < repos.txt
+
+          echo "## Overall Contributors Across All Repositories" >> CONTRIBUTORS.md
+          for contributor in "${!contributor_commits[@]}"; do
+            echo "- @$contributor: ${contributor_commits[$contributor]} commits" >> CONTRIBUTORS.md
+          done
+
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -53,7 +70,7 @@ jobs:
           git config --global user.email "github-actions@github.com"
 
           git add CONTRIBUTORS.md
-          git commit -m "Updated contributors list for all organization repositories" || echo "No changes to commit"
+          git commit -m "Updated contributors list with commit counts" || echo "No changes to commit"
           git push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
