@@ -22,9 +22,10 @@ jobs:
       - name: Fetch all non-forked repositories in the organization
         run: |
           echo "Fetching all non-forked repositories..."
-          gh repo list SigmoidAI --limit 100 --json name,fork --jq '[.[] | select(.fork == false) | .name]' > repos.txt
+          gh repo list SigmoidAI --limit 100 --json name,isFork --jq '[.[] | select(.isFork == false) | .name]' > repos.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
 
       - name: Fetch contributors and filter only local ones
