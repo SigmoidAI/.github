@@ -1,68 +1,59 @@
-name: Monthly contributor report
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: "3 2 1 * *"
+name: Update Organization Contributors in README
 
-permissions:
-  contents: read
+on:
+  schedule:
+    - cron: "0 0 1 * *"  # Runs on the 1st of each month
+  workflow_dispatch: # Allows manual triggering
 
 jobs:
-  contributor_report:
-    name: contributor report
+  update-contributors:
     runs-on: ubuntu-latest
     permissions:
-      issues: write
-
+      contents: write
     steps:
-      - name: Get dates for last month
-        shell: bash
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install GitHub CLI
         run: |
-          # Calculate the first day of the previous month
-          start_date=$(date -d "last month" +%Y-%m-01)
+          sudo apt update
+          sudo apt install -y gh
 
-          # Calculate the last day of the previous month
-          end_date=$(date -d "$start_date +1 month -1 day" +%Y-%m-%d)
-
-          #Set an environment variable with the date range
-          echo "START_DATE=$start_date" >> "$GITHUB_ENV"
-          echo "END_DATE=$end_date" >> "$GITHUB_ENV"
-
-      - name: Run contributor action
-        uses: github/contributors@v1
+      - name: Fetch all repositories in the organization
+        run: |
+          echo "Fetching all repositories..."
+          gh repo list SigmoidAI --limit 100 --json name -q '.[].name' > repos.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          START_DATE: ${{ env.START_DATE }}
-          END_DATE: ${{ env.END_DATE }}
-          ORGANIZATION: SigmoidAI
-          SPONSOR_INFO: "true"
 
-      - name: Create issue
-        uses: peter-evans/create-issue-from-file@v5
-        with:
-          title: Monthly contributor report
-          token: ${{ secrets.GITHUB_TOKEN }}
-          content-filepath: ./contributors.md
-          assignees: <YOUR_GITHUB_HANDLE_HERE>
+      - name: Fetch contributors for all repositories
+        run: |
+          echo "# Organization Contributors" > CONTRIBUTORS.md
+          echo "This is an auto-generated list of contributors from all repositories." >> CONTRIBUTORS.md
+          echo "" >> CONTRIBUTORS.md
 
+          while IFS= read -r repo; do
+            echo "Processing repository: $repo"
+            gh api repos/SigmoidAI/$repo/contributors --paginate --jq '.[].login' | sort -u > tmp_contributors.txt
 
+            if [ -s tmp_contributors.txt ]; then
+              echo "### $repo" >> CONTRIBUTORS.md
+              while IFS= read -r contributor; do
+                echo "- @$contributor" >> CONTRIBUTORS.md
+              done < tmp_contributors.txt
+              echo "" >> CONTRIBUTORS.md
+            fi
+          done < repos.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
 
-
-on:
-    push:
-        branches:
-            - main
-
-jobs:
-    contrib-readme-job:
-        runs-on: ubuntu-latest
-        name: A job to automate contrib in readme
-        permissions:
-          contents: write
-          pull-requests: write
-        steps:
-            - name: Contribute List
-              uses: akhilmhdh/contributors-readme-action@v2.3.10
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git add CONTRIBUTORS.md
+          git commit -m "Updated contributors list for all organization repositories" || echo "No changes to commit"
+          git push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
