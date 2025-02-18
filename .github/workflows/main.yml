@@ -1,4 +1,4 @@
-name: Update Organization Contributors with Commit Counts
+name: Update Organization Contributors with Total Commits
 
 on:
   schedule:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Install GitHub CLI
+      - name: Install GitHub CLI and jq
         run: |
           sudo apt update
           sudo apt install -y gh jq
@@ -26,41 +26,37 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Fetch contributors and commit counts
+      - name: Fetch contributors and commit counts, then aggregate
         run: |
           declare -A contributor_commits
-
-          echo "# Organization Contributors" > CONTRIBUTORS.md
-          echo "This list is auto-generated from all repositories with commit counts." >> CONTRIBUTORS.md
-          echo "" >> CONTRIBUTORS.md
 
           while IFS= read -r repo; do
             echo "Processing repository: $repo"
             gh api repos/SigmoidAI/$repo/contributors --paginate --jq '.[] | {login: .login, commits: .contributions}' > tmp_contributors.json
 
-            if [ -s tmp_contributors.json ]; then
-              echo "### $repo" >> CONTRIBUTORS.md
-              jq -r '.login + " (" + (.commits | tostring) + " commits)"' tmp_contributors.json | tee -a CONTRIBUTORS.md
+            while IFS= read -r line; do
+              contributor=$(echo "$line" | awk '{print $1}')
+              commits=$(echo "$line" | awk '{print $2}' | tr -d '()')
 
-              # Aggregate commits per user
-              while IFS= read -r line; do
-                contributor=$(echo "$line" | awk '{print $1}')
-                commits=$(echo "$line" | awk '{print $2}' | tr -d '()')
-
-                if [[ -n "$contributor" && -n "$commits" ]]; then
-                  contributor_commits[$contributor]=$(( ${contributor_commits[$contributor]:-0} + commits ))
-                fi
-              done < <(jq -r '.login + " " + (.commits | tostring)' tmp_contributors.json)
-
-              echo "" >> CONTRIBUTORS.md
-            fi
+              if [[ -n "$contributor" && -n "$commits" ]]; then
+                contributor_commits[$contributor]=$(( ${contributor_commits[$contributor]:-0} + commits ))
+              fi
+            done < <(jq -r '.login + " " + (.commits | tostring)' tmp_contributors.json)
           done < repos.txt
 
-          echo "## Overall Contributors Across All Repositories" >> CONTRIBUTORS.md
+          echo "# Organization Contributors" > CONTRIBUTORS.md
+          echo "This list is auto-generated and sorted by total contributions across all repositories." >> CONTRIBUTORS.md
+          echo "" >> CONTRIBUTORS.md
+
           for contributor in "${!contributor_commits[@]}"; do
-            echo "- @$contributor: ${contributor_commits[$contributor]} commits" >> CONTRIBUTORS.md
+            echo "$contributor ${contributor_commits[$contributor]}" >> sorted_contributors.txt
           done
 
+          sort -k2 -nr sorted_contributors.txt | while read -r contributor total_commits; do
+            echo "- @$contributor: $total_commits commits" >> CONTRIBUTORS.md
+          done
+
+          rm -f sorted_contributors.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -70,7 +66,7 @@ jobs:
           git config --global user.email "github-actions@github.com"
 
           git add CONTRIBUTORS.md
-          git commit -m "Updated contributors list with commit counts" || echo "No changes to commit"
+          git commit -m "Updated contributors list sorted by total contributions" || echo "No changes to commit"
           git push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
