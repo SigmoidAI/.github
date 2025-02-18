@@ -1,4 +1,4 @@
-name: Update Organization Contributors with Total Commits
+name: Update Organization Contributors with Local Commits Only
 
 on:
   schedule:
@@ -22,18 +22,37 @@ jobs:
       - name: Fetch all repositories in the organization
         run: |
           echo "Fetching all repositories..."
-          gh repo list SigmoidAI --limit 100 --json name -q '.[].name' > repos.txt
+          gh repo list SigmoidAI --limit 100 --json name,isFork -q '.[] | "\(.name) \(.isFork)"' > repos.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Fetch contributors and commit counts, then aggregate
+      - name: Fetch contributors and filter only local ones
         run: |
           declare -A contributor_commits
 
-          while IFS= read -r repo; do
+          while IFS= read -r repo isFork; do
             echo "Processing repository: $repo"
-            gh api repos/SigmoidAI/$repo/contributors --paginate --jq '.[] | {login: .login, commits: .contributions}' > tmp_contributors.json
 
+            # Get the default branch name
+            default_branch=$(gh api repos/SigmoidAI/$repo --jq '.default_branch')
+
+            # If it's a fork, find contributors who committed only after forking
+            if [[ "$isFork" == "true" ]]; then
+              echo "Repository $repo is a fork. Filtering only local contributors."
+              gh api repos/SigmoidAI/$repo/commits --paginate --jq '.[].author.login' > local_contributors.txt
+            else
+              echo "Repository $repo is not a fork. Including all contributors."
+              gh api repos/SigmoidAI/$repo/contributors --paginate --jq '.[] | {login: .login, commits: .contributions}' > tmp_contributors.json
+            fi
+
+            # Process contributors
+            if [[ -f local_contributors.txt ]]; then
+              grep -Fxf local_contributors.txt tmp_contributors.json > filtered_contributors.json || touch filtered_contributors.json
+            else
+              cp tmp_contributors.json filtered_contributors.json
+            fi
+
+            # Aggregate contributions
             while IFS= read -r line; do
               contributor=$(echo "$line" | awk '{print $1}')
               commits=$(echo "$line" | awk '{print $2}' | tr -d '()')
@@ -41,11 +60,12 @@ jobs:
               if [[ -n "$contributor" && -n "$commits" ]]; then
                 contributor_commits[$contributor]=$(( ${contributor_commits[$contributor]:-0} + commits ))
               fi
-            done < <(jq -r '.login + " " + (.commits | tostring)' tmp_contributors.json)
+            done < <(jq -r '.login + " " + (.commits | tostring)' filtered_contributors.json)
+
           done < repos.txt
 
-          echo "# Organization Contributors" > CONTRIBUTORS.md
-          echo "This list is auto-generated and sorted by total contributions across all repositories." >> CONTRIBUTORS.md
+          echo "# Organization Contributors (Local Only)" > CONTRIBUTORS.md
+          echo "This list is auto-generated and sorted by total contributions across all repositories, excluding upstream contributors from forks." >> CONTRIBUTORS.md
           echo "" >> CONTRIBUTORS.md
 
           for contributor in "${!contributor_commits[@]}"; do
@@ -66,7 +86,7 @@ jobs:
           git config --global user.email "github-actions@github.com"
 
           git add CONTRIBUTORS.md
-          git commit -m "Updated contributors list sorted by total contributions" || echo "No changes to commit"
+          git commit -m "Updated contributors list with only local contributions" || echo "No changes to commit"
           git push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
