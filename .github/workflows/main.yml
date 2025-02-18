@@ -1,4 +1,4 @@
-name: Update Organization Contributors with Leaderboard
+name: Update Organization Contributors with Local Commits Only
 
 on:
   schedule:
@@ -19,20 +19,19 @@ jobs:
           sudo apt update
           sudo apt install -y gh jq
 
-      - name: Fetch all repositories in the organization
+      - name: Fetch all non-forked repositories in the organization
         run: |
-          echo "Fetching all repositories..."
-          gh repo list SigmoidAI --limit 100 --json name,isFork -q '.[] | "\(.name) \(.isFork)"' > repos.txt
+          echo "Fetching all non-forked repositories..."
+          gh repo list SigmoidAI --limit 100 --json name,fork --jq '[.[] | select(.fork == false) | .name]' > repos.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
       - name: Fetch contributors and filter only local ones
         run: |
           declare -A contributor_commits
 
-          while IFS= read -r line; do
-            repo=$(echo "$line" | jq -r '.name')
-            isFork=$(echo "$line" | jq -r '.isFork')
+          while IFS= read -r repo isFork; do
             echo "Processing repository: $repo"
 
             # Get the default branch name
@@ -70,35 +69,15 @@ jobs:
           echo "This list is auto-generated and sorted by total contributions across all repositories, excluding upstream contributors from forks." >> CONTRIBUTORS.md
           echo "" >> CONTRIBUTORS.md
 
-          echo "| Contributor | Contributions |" > LEADERBOARD.md
-          echo "|------------|--------------|" >> LEADERBOARD.md
-
           for contributor in "${!contributor_commits[@]}"; do
             echo "$contributor ${contributor_commits[$contributor]}" >> sorted_contributors.txt
           done
 
           sort -k2 -nr sorted_contributors.txt | while read -r contributor total_commits; do
             echo "- @$contributor: $total_commits commits" >> CONTRIBUTORS.md
-
-            profile_url="https://github.com/$contributor"
-            profile_pic="https://github.com/$contributor.png?size=50"
-            echo "| ![$contributor]($profile_pic) [@$contributor]($profile_url) | $total_commits commits |" >> LEADERBOARD.md
           done
 
           rm -f sorted_contributors.txt
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update README with Leaderboard
-        run: |
-          # Remove old leaderboard if it exists
-          sed -i '/<!-- LEADERBOARD START -->/,/<!-- LEADERBOARD END -->/d' README.md
-
-          # Insert updated leaderboard
-          echo "<!-- LEADERBOARD START -->" >> README.md
-          cat LEADERBOARD.md >> README.md
-          echo "<!-- LEADERBOARD END -->" >> README.md
-
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -107,8 +86,8 @@ jobs:
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
 
-          git add README.md CONTRIBUTORS.md LEADERBOARD.md
-          git commit -m "Updated contributors leaderboard in README" || echo "No changes to commit"
+          git add CONTRIBUTORS.md
+          git commit -m "Updated contributors list with only local contributions" || echo "No changes to commit"
           git push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
