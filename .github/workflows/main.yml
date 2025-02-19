@@ -41,9 +41,8 @@ jobs:
               # For forked repos, we need to get the fork creation date
               fork_date=$(gh api repos/SigmoidAI/$repo_name --jq '.created_at')
               
-              # Get all commits after fork date
-              gh api repos/SigmoidAI/$repo_name/commits --paginate \
-                --since "$fork_date" \
+              # Get all commits after fork date using the since parameter in the URL
+              gh api "repos/SigmoidAI/$repo_name/commits?since=$fork_date" --paginate \
                 --jq '.[] | select(.author != null) | {login: .author.login, date: .commit.author.date}' > repo_commits.json
               
               # Count commits per author
