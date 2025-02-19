@@ -161,5 +161,3 @@ jobs:
           git add README.md
           git commit -m "Sync contributors to README" || echo "No changes to commit"
           git push
-
-Version 2 of 2
