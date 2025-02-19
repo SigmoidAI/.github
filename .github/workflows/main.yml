@@ -29,7 +29,7 @@ jobs:
           touch all_contributions.txt
           
           # Fetch all repositories in the organization
-          gh repo list SigmoidAI --json name,isFork,defaultBranch --jq '.[]' > repos.json
+          gh repo list SigmoidAI --json name,isFork --jq '.[]' > repos.json
           
           # Process each repository
           while IFS= read -r repo_data; do
