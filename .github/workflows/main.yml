@@ -122,6 +122,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   sync-contributors:
+    needs: [update-contributors]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -135,19 +136,19 @@ jobs:
           CONTRIBUTORS=$(cat CONTRIBUTORS.md)
           
           # Create a temporary file for the new README content
-          awk -v data="$CONTRIBUTORS" '
+          awk '
           /<!-- CONTRIBUTORS-START -->/ {
             print
-            print data
-            skip = 1
+            while (getline line < "CONTRIBUTORS.md") {
+              print line
+            }
             next
           }
           /<!-- CONTRIBUTORS-END -->/ {
-            skip = 0
-          }
-          !skip {
             print
+            next
           }
+          { print }
           ' README.md > README.tmp
           
           # Replace the old README with the new one
@@ -160,3 +161,5 @@ jobs:
           git add README.md
           git commit -m "Sync contributors to README" || echo "No changes to commit"
           git push
+
+Version 2 of 2
