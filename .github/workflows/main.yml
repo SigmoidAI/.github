@@ -59,21 +59,19 @@ jobs:
             fi
           done < <(jq -c '.' repos.json)
           
-          # Sum up all contributions and sort
+          # Process sorted contributors
           awk '{contrib[$1] += $2} END {for (author in contrib) print author, contrib[author]}' all_contributions.txt | \
-            sort -k2 -nr | \
-            while read -r author commits; do
-              # Get user data including avatar
-              user_data=$(gh api users/$author --jq '[.avatar_url, .name // .login, .bio // ""]')
-              avatar_url=$(echo "$user_data" | jq -r '.[0]')
-              name=$(echo "$user_data" | jq -r '.[1]')
-              
-              # Add to table (4 contributors per row)
-              if [ $COUNTER -eq 4 ]; then
-                CONTRIB_SECTION+="</tr>\n<tr>\n"
-                COUNTER=0
-              fi
-              
+              sort -k2 -nr | \
+              while read -r author commits; do
+                  user_data=$(gh api users/$author --jq '[.avatar_url, .name // .login]')
+                  avatar_url=$(echo "$user_data" | jq -r '.[0]')
+                  name=$(echo "$user_data" | jq -r '.[1]')
+          
+                  # Start new row
+                  if [ $((COUNTER % MAX_PER_ROW)) -eq 0 ]; then
+                      CONTRIB_SECTION+="<tr>\n"
+                  fi
+                        
               CONTRIB_SECTION+="<td align=\"center\">\n"
               CONTRIB_SECTION+="<a href=\"https://github.com/$author\">\n"
               CONTRIB_SECTION+="<img src=\"$avatar_url\" width=\"100px;\" alt=\"$name\"/><br />\n"
@@ -82,10 +80,15 @@ jobs:
               CONTRIB_SECTION+="<a href=\"https://github.com/SigmoidAI/search?q=$author\">\n"
               CONTRIB_SECTION+="<img src=\"https://img.shields.io/badge/Contributions-$commits-green?style=flat-square&logo=github\" alt=\"Contributions\"/>\n"
               CONTRIB_SECTION+="</a>\n"
-              CONTRIB_SECTION+="</td>\n"
+              CONTRIB_SECTION+="</td>\n"  
               
+              # Close row if needed
               COUNTER=$((COUNTER + 1))
-            done
+              if [ $((COUNTER % MAX_PER_ROW)) -eq 0 ]; then
+                  CONTRIB_SECTION+="</tr>\n"
+              fi
+          done
+
           
           # Close the table
           if [ $COUNTER -ne 0 ]; then
@@ -96,6 +99,17 @@ jobs:
             done
           fi
           CONTRIB_SECTION+="</tr>\n</table>\n"
+
+          # Fill remaining slots in last row if necessary
+          if [ $((COUNTER % MAX_PER_ROW)) -ne 0 ]; then
+              while [ $((COUNTER % MAX_PER_ROW)) -ne 0 ]; do
+                  CONTRIB_SECTION+="<td></td>\n"
+                  COUNTER=$((COUNTER + 1))
+              done
+              CONTRIB_SECTION+="</tr>\n"
+          fi
+          # Close table
+          CONTRIB_SECTION+="</table>\n"
           
           # Update README.md
           if grep -q "## 👥 Contributors" README.md; then
