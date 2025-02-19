@@ -120,3 +120,43 @@ jobs:
           git push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sync-contributors:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Update README with contributors
+        run: |
+          # Read the contributors data
+          CONTRIBUTORS=$(cat CONTRIBUTORS.md)
+          
+          # Create a temporary file for the new README content
+          awk -v data="$CONTRIBUTORS" '
+          /<!-- CONTRIBUTORS-START -->/ {
+            print
+            print data
+            skip = 1
+            next
+          }
+          /<!-- CONTRIBUTORS-END -->/ {
+            skip = 0
+          }
+          !skip {
+            print
+          }
+          ' README.md > README.tmp
+          
+          # Replace the old README with the new one
+          mv README.tmp README.md
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add README.md
+          git commit -m "Sync contributors to README" || echo "No changes to commit"
+          git push
