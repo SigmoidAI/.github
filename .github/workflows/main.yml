@@ -20,10 +20,10 @@ jobs:
 
       - name: Fetch and process contributors
         run: |
-          # Initialize contributors file
-          echo "# Organization Contributors" > CONTRIBUTORS.md
-          echo "This list shows total contributions across all repositories in the organization." >> CONTRIBUTORS.md
-          echo "" >> CONTRIBUTORS.md
+          # Initialize contributors section for README
+          CONTRIB_SECTION="## 👥 Contributors\n\nThanks to all our contributors! 🙏\n\n"
+          CONTRIB_SECTION+="<table>\n<tr>\n"
+          COUNTER=0
           
           # Create temporary file for storing all contributions
           touch all_contributions.txt
@@ -38,10 +38,10 @@ jobs:
             echo "Processing repository: $repo_name"
             
             if [ "$is_fork" = "true" ]; then
-              # For forked repos, we need to get the fork creation date
+              # For forked repos, get the fork creation date
               fork_date=$(gh api repos/SigmoidAI/$repo_name --jq '.created_at')
               
-              # Get all commits after fork date using the since parameter in the URL
+              # Get all commits after fork date using the since parameter
               gh api "repos/SigmoidAI/$repo_name/commits?since=$fork_date" --paginate \
                 --jq '.[] | select(.author != null) | {login: .author.login, date: .commit.author.date}' > repo_commits.json
               
@@ -63,8 +63,48 @@ jobs:
           awk '{contrib[$1] += $2} END {for (author in contrib) print author, contrib[author]}' all_contributions.txt | \
             sort -k2 -nr | \
             while read -r author commits; do
-              echo "- @$author: $commits contributions" >> CONTRIBUTORS.md
+              # Get user data including avatar
+              user_data=$(gh api users/$author --jq '[.avatar_url, .name // .login, .bio // ""]')
+              avatar_url=$(echo "$user_data" | jq -r '.[0]')
+              name=$(echo "$user_data" | jq -r '.[1]')
+              
+              # Add to table (4 contributors per row)
+              if [ $COUNTER -eq 4 ]; then
+                CONTRIB_SECTION+="</tr>\n<tr>\n"
+                COUNTER=0
+              fi
+              
+              CONTRIB_SECTION+="<td align=\"center\">\n"
+              CONTRIB_SECTION+="<a href=\"https://github.com/$author\">\n"
+              CONTRIB_SECTION+="<img src=\"$avatar_url\" width=\"100px;\" alt=\"$name\"/><br />\n"
+              CONTRIB_SECTION+="<sub><b>$name</b></sub>\n"
+              CONTRIB_SECTION+="</a><br />\n"
+              CONTRIB_SECTION+="<a href=\"https://github.com/SigmoidAI/search?q=$author\">\n"
+              CONTRIB_SECTION+="<img src=\"https://img.shields.io/badge/Contributions-$commits-green?style=flat-square&logo=github\" alt=\"Contributions\"/>\n"
+              CONTRIB_SECTION+="</a>\n"
+              CONTRIB_SECTION+="</td>\n"
+              
+              COUNTER=$((COUNTER + 1))
             done
+          
+          # Close the table
+          if [ $COUNTER -ne 0 ]; then
+            # Fill remaining cells in last row if needed
+            while [ $COUNTER -lt 4 ]; do
+              CONTRIB_SECTION+="<td></td>\n"
+              COUNTER=$((COUNTER + 1))
+            done
+          fi
+          CONTRIB_SECTION+="</tr>\n</table>\n"
+          
+          # Update README.md
+          if grep -q "## 👥 Contributors" README.md; then
+            # If contributors section exists, replace it
+            sed -i "/## 👥 Contributors/,/## /c\\$CONTRIB_SECTION" README.md
+          else
+            # If no contributors section exists, append it
+            echo -e "\n$CONTRIB_SECTION" >> README.md
+          fi
           
           # Clean up temporary files
           rm -f repos.json repo_commits.json repo_contributors.json all_contributions.txt
@@ -75,8 +115,8 @@ jobs:
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          git add CONTRIBUTORS.md
-          git commit -m "Updated contributors list" || echo "No changes to commit"
+          git add README.md
+          git commit -m "Updated contributors section in README" || echo "No changes to commit"
           git push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
