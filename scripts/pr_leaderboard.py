@@ -154,25 +154,46 @@ Thanks to all our contributors! 🙏
 
 """
 
-    # Add visual grid of profile pictures (HTML version)
-    markdown += "<div style='display: flex; flex-wrap: wrap; gap: 10px;'>\n"
-
-    for member in member_stats:
-        username = member["username"]
-        avatar_url = member["avatar_url"]
-        profile_url = member["profile_url"]
-        pr_count = member["pr_count"]
-
-        markdown += f"""<div style='text-align: center; width: 120px;'>
-  <a href="{profile_url}">
-    <img src="{avatar_url}&s=100" width="100" height="100" alt="{username}" style='border-radius: 50%;'><br>
-    <strong>{username}</strong>
-  </a><br>
-  {pr_count} PRs
-</div>
-"""
-
-    markdown += "</div>\n\n"
+    # Calculate how many members to show per row (5 is a good number)
+    members_per_row = 5
+    
+    # Create rows of members
+    rows = [member_stats[i:i + members_per_row] for i in range(0, len(member_stats), members_per_row)]
+    
+    # Create table for profile pictures
+    for i, row in enumerate(rows):
+        # Add table header for the first row
+        if i == 0:
+            # Header row
+            markdown += "| "
+            for _ in range(min(members_per_row, len(row))):
+                markdown += "Contributor | "
+            markdown += "\n| "
+            for _ in range(min(members_per_row, len(row))):
+                markdown += ":---: | "
+            markdown += "\n"
+        
+        # Row with images and names
+        markdown += "| "
+        for member in row:
+            username = member["username"]
+            avatar_url = member["avatar_url"]
+            profile_url = member["profile_url"]
+            pr_count = member["pr_count"]
+            if pr_count == 0:
+                pr_text = "No PRs"
+            elif pr_count == 1:
+                pr_text = "1 PR"
+            else:
+                pr_text = f"{pr_count} PRs"
+            markdown += f"[![{username}]({avatar_url}&s=60)]({profile_url})<br>**{username}**<br>{pr_text} | "
+        
+        # Fill empty cells if needed
+        remaining = members_per_row - len(row)
+        for _ in range(remaining):
+            markdown += " | "
+            
+        markdown += "\n"
 
     return markdown
 
