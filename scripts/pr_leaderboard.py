@@ -23,7 +23,7 @@ HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"}
 GRAPHQL_HEADERS = {"Authorization": f"Bearer {GITHUB_TOKEN}"}
 GRAPHQL_URL = "https://api.github.com/graphql"
 REST_API_URL = "https://api.github.com"
-README_FILE = "README.md"
+README_FILE = "profile/README.md"
 
 
 def get_org_members():
