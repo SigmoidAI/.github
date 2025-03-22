@@ -29,7 +29,7 @@ jobs:
       
       - name: Run PR leaderboard script
         env:
-          API_TOKEN_GITHUB: ${{ secrets.GITHUB_TOKEN }}
+          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
         run: python scripts/pr_leaderboard.py
       
       - name: Commit and push if changed
