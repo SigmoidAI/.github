@@ -27,18 +27,30 @@ README_FILE = "profile/README.md"
 
 
 def get_org_members():
-    """Fetch all members of the organization"""
+    """Fetch all members of the organization, following pagination"""
     logger.info(f"Fetching members for organization: {ORG_NAME}")
     url = f"{REST_API_URL}/orgs/{ORG_NAME}/members"
-    response = requests.get(url, headers=HEADERS)
+    params = {"per_page": 100}
+    members = []
+    page = 1
 
-    if response.status_code != 200:
-        logger.error(
-            f"Failed to fetch members: {response.status_code} - {response.text}"
-        )
-        return []
+    while url:
+        response = requests.get(url, headers=HEADERS, params=params)
 
-    members = response.json()
+        if response.status_code != 200:
+            logger.error(
+                f"Failed to fetch members (page {page}): {response.status_code} - {response.text}"
+            )
+            return []
+
+        page_members = response.json()
+        members.extend(page_members)
+        logger.info(f"Fetched {len(page_members)} members from page {page}")
+
+        url = response.links.get("next", {}).get("url")
+        params = None
+        page += 1
+
     logger.info(f"Found {len(members)} organization members")
     return members
 
